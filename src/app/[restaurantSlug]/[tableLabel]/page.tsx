@@ -5,7 +5,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase, type RequestType } from '@/lib/supabase'
 
-// ✅ THIS IS THE FIX. We define the 'params' type directly and correctly here.
+// ✅ THE FIX: We define the params type directly and correctly here,
+// which satisfies the strict requirements of the production build.
 export default function CustomerPage({ params }: { params: { restaurantSlug: string; tableLabel: string } }) {
   const [restaurant, setRestaurant] = useState<any>(null)
   const [table, setTable] = useState<any>(null)
