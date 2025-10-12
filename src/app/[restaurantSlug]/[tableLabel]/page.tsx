@@ -5,9 +5,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase, type RequestType } from '@/lib/supabase'
 
-// ✅ THE FIX: We define the params type directly and correctly here,
-// which satisfies the strict requirements of the production build.
-export default function CustomerPage({ params }: { params: { restaurantSlug: string; tableLabel: string } }) {
+// ✅ CORRECT for Next.js 15: params is a Promise
+interface PageProps {
+  params: Promise<{ restaurantSlug: string; tableLabel: string }>
+}
+
+export default function CustomerPage({ params }: PageProps) {
+  const [resolvedParams, setResolvedParams] = useState<{ restaurantSlug: string; tableLabel: string } | null>(null)
   const [restaurant, setRestaurant] = useState<any>(null)
   const [table, setTable] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -34,25 +38,47 @@ export default function CustomerPage({ params }: { params: { restaurantSlug: str
     { type: 'request_sauces' as RequestType, icon: '🥫', label: 'Sauces & Condiments', description: 'Need sauce or seasonings', colors: ['#6366f1', '#4f46e5'], requiresPhoto: false },
   ];
 
+  // ✅ First useEffect: Resolve the params Promise
   useEffect(() => {
+    params.then(p => setResolvedParams(p))
+  }, [params])
+
+  // ✅ Second useEffect: Fetch data only after params are resolved
+  useEffect(() => {
+    if (!resolvedParams) return;
+
     const fetchRestaurantAndTable = async () => {
       setLoading(true);
       try {
-        const { data: restaurantData, error: restaurantError } = await supabase.from('restaurants').select('*').eq('slug', params.restaurantSlug).single();
+        const { data: restaurantData, error: restaurantError } = await supabase
+          .from('restaurants')
+          .select('*')
+          .eq('slug', resolvedParams.restaurantSlug)
+          .single();
+        
         if (restaurantError) throw new Error('Restaurant not found');
         setRestaurant(restaurantData);
 
-        const { data: tableData, error: tableError } = await supabase.from('tables').select('*').eq('restaurant_id', restaurantData.id).eq('label', params.tableLabel).single();
+        const { data: tableData, error: tableError } = await supabase
+          .from('tables')
+          .select('*')
+          .eq('restaurant_id', restaurantData.id)
+          .eq('label', resolvedParams.tableLabel)
+          .single();
+        
         if (tableError) throw new Error('Table not found');
         setTable(tableData);
 
         await checkCooldowns(tableData.id);
       } catch (error: any) {
         setMessage(`Error: ${error.message}`);
-      } finally { setLoading(false) }
+      } finally { 
+        setLoading(false) 
+      }
     };
+    
     fetchRestaurantAndTable();
-  }, [params]);
+  }, [resolvedParams]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -148,7 +174,8 @@ export default function CustomerPage({ params }: { params: { restaurantSlug: str
   const closePhotoModal = () => { setShowPhotoModal(false); setPhotoFile(null); setPhotoPreview(null) };
   const isOnCooldown = (requestType: RequestType) => Boolean(cooldowns[requestType]?.until);
 
-  if (loading) return <div style={{ minHeight:'100vh', display:'flex', justifyContent:'center', alignItems:'center', color:'white', background: 'linear-gradient(135deg,#0f172a,#1e1b4b,#312e81)' }}>Loading...</div>
+  // Show loading while params are being resolved OR data is being fetched
+  if (!resolvedParams || loading) return <div style={{ minHeight:'100vh', display:'flex', justifyContent:'center', alignItems:'center', color:'white', background: 'linear-gradient(135deg,#0f172a,#1e1b4b,#312e81)' }}>Loading...</div>
   if (message.includes('Error')) return <div style={{ minHeight:'100vh', display:'flex', justifyContent:'center', alignItems:'center', color:'red', background: 'linear-gradient(135deg,#0f172a,#1e1b4b,#312e81)' }}>{message}</div>
   if (!restaurant || !table) return <div style={{ minHeight:'100vh', display:'flex', justifyContent:'center', alignItems:'center', color:'white', background: 'linear-gradient(135deg,#0f172a,#1e1b4b,#312e81)' }}>Restaurant or Table not found</div>
 
