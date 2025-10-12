@@ -5,57 +5,57 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase, type RequestType } from '@/lib/supabase'
 
-// ✅ THE FIX: We define the params type directly and correctly here.
+const cooldownSettings = {
+  'toilet_clean': 15, 'ready_to_order': 10, 'table_clean': 10,
+  'additional_order': 5, 'replace_cutlery': 5, 'request_sauces': 3
+};
+
+const requestOptions = [
+  { type: 'table_clean' as RequestType, icon: '🧽', label: 'Clean Table', description: 'Need table cleaned & sanitized', colors: ['#3b82f6', '#06b6d4'], requiresPhoto: false },
+  { type: 'toilet_clean' as RequestType, icon: '🚽', label: 'Toilet Issue', description: 'Report restroom problem', colors: ['#ef4444', '#ec4899'], requiresPhoto: true },
+  { type: 'ready_to_order' as RequestType, icon: '🍽️', label: 'Ready to Order', description: 'Ready to place our order', colors: ['#10b981', '#059669'], requiresPhoto: false },
+  { type: 'additional_order' as RequestType, icon: '➕', label: 'Order More', description: 'Want to add more items', colors: ['#f59e0b', '#d97706'], requiresPhoto: false },
+  { type: 'replace_cutlery' as RequestType, icon: '🍴', label: 'New Cutlery', description: 'Need fresh utensils', colors: ['#8b5cf6', '#7c3aed'], requiresPhoto: false },
+  { type: 'request_sauces' as RequestType, icon: '🥫', label: 'Sauces & Condiments', description: 'Need sauce or seasonings', colors: ['#6366f1', '#4f46e5'], requiresPhoto: false },
+];
+
+interface Restaurant { id: string; name: string; slug: string; }
+interface Table { id: string; label: string; restaurant_id: string; }
+
+// ✅ THIS IS THE FIX: We define the 'params' type directly and correctly here,
+// which satisfies the strict requirements of the production build.
 export default function CustomerPage({ params }: { params: { restaurantSlug: string; tableLabel: string } }) {
-  const [restaurant, setRestaurant] = useState<any>(null)
-  const [table, setTable] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-  const [message, setMessage] = useState('')
-  const [submitting, setSubmitting] = useState<RequestType | null>(null)
-  const [showPhotoModal, setShowPhotoModal] = useState(false)
-  const [photoFile, setPhotoFile] = useState<File | null>(null)
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
-  const [cooldowns, setCooldowns] = useState<Record<RequestType, { until: Date | null, timeLeft: string }>>({} as any)
-  const [showSparkle, setShowSparkle] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
-  const cooldownSettings = {
-    'toilet_clean': 15,
-    'ready_to_order': 10,
-    'table_clean': 10,
-    'additional_order': 5,
-    'replace_cutlery': 5,
-    'request_sauces': 3
-  };
-
-  const requestOptions = [
-    { type: 'table_clean' as RequestType, icon: '🧽', label: 'Clean Table', description: 'Need table cleaned & sanitized', colors: ['#3b82f6', '#06b6d4'], requiresPhoto: false },
-    { type: 'toilet_clean' as RequestType, icon: '🚽', label: 'Toilet Issue', description: 'Report restroom problem', colors: ['#ef4444', '#ec4899'], requiresPhoto: true },
-    { type: 'ready_to_order' as RequestType, icon: '🍽️', label: 'Ready to Order', description: 'Ready to place our order', colors: ['#10b981', '#059669'], requiresPhoto: false },
-    { type: 'additional_order' as RequestType, icon: '➕', label: 'Order More', description: 'Want to add more items', colors: ['#f59e0b', '#d97706'], requiresPhoto: false },
-    { type: 'replace_cutlery' as RequestType, icon: '🍴', label: 'New Cutlery', description: 'Need fresh utensils', colors: ['#8b5cf6', '#7c3aed'], requiresPhoto: false },
-    { type: 'request_sauces' as RequestType, icon: '🥫', label: 'Sauces & Condiments', description: 'Need sauce or seasonings', colors: ['#6366f1', '#4f46e5'], requiresPhoto: false },
-  ];
+  const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
+  const [table, setTable] = useState<Table | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState('');
+  const [submitting, setSubmitting] = useState<RequestType | null>(null);
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [cooldowns, setCooldowns] = useState<Record<RequestType, { until: Date | null, timeLeft: string }>>({} as any);
+  const [showSparkle, setShowSparkle] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const fetchRestaurantAndTable = async () => {
       setLoading(true);
       try {
-        const { data: restaurantData, error: restaurantError } = await supabase.from('restaurants').select('*').eq('slug', params.restaurantSlug).single()
-        if (restaurantError) throw new Error('Restaurant not found')
-        setRestaurant(restaurantData)
+        const { data: restaurantData, error: restaurantError } = await supabase.from('restaurants').select('*').eq('slug', params.restaurantSlug).single();
+        if (restaurantError) throw new Error('Restaurant not found');
+        setRestaurant(restaurantData);
 
-        const { data: tableData, error: tableError } = await supabase.from('tables').select('*').eq('restaurant_id', restaurantData.id).eq('label', params.tableLabel).single()
-        if (tableError) throw new Error('Table not found')
-        setTable(tableData)
+        const { data: tableData, error: tableError } = await supabase.from('tables').select('*').eq('restaurant_id', restaurantData.id).eq('label', params.tableLabel).single();
+        if (tableError) throw new Error('Table not found');
+        setTable(tableData);
 
-        await checkCooldowns(tableData.id)
+        await checkCooldowns(tableData.id);
       } catch (error: any) {
-        setMessage(`Error: ${error.message}`)
+        setMessage(`Error: ${error.message}`);
       } finally { setLoading(false) }
-    }
+    };
     fetchRestaurantAndTable();
-  }, [params])
+  }, [params]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -63,14 +63,17 @@ export default function CustomerPage({ params }: { params: { restaurantSlug: str
           const updated = { ...prev };
           let hasChanges = false;
           for (const type of Object.keys(updated) as RequestType[]) {
-            if (updated[type].until) {
-              const diff = updated[type].until!.getTime() - new Date().getTime();
-              const newTimeLeft = diff > 0 ? (Math.floor(diff / (1000 * 60)) > 0 ? `${Math.floor(diff / (1000 * 60))}m ${Math.floor((diff % (1000 * 60)) / 1000)}s` : `${Math.floor((diff % (1000 * 60)) / 1000)}s`) : '';
-              if (newTimeLeft !== updated[type].timeLeft) {
-                updated[type] = { ...updated[type], timeLeft: newTimeLeft };
-                if(newTimeLeft === '') updated[type].until = null;
-                hasChanges = true;
-              }
+            if (updated[type] && updated[type].until) {
+                const diff = new Date(updated[type].until!).getTime() - new Date().getTime();
+                const minutes = Math.floor(diff / (1000 * 60));
+                const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+                const newTimeLeft = diff > 0 ? (minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`) : '';
+
+                if (newTimeLeft !== updated[type].timeLeft) {
+                    updated[type] = { ...updated[type], timeLeft: newTimeLeft };
+                    if (newTimeLeft === '') updated[type].until = null;
+                    hasChanges = true;
+                }
             }
           }
           return hasChanges ? updated : prev;
@@ -82,19 +85,21 @@ export default function CustomerPage({ params }: { params: { restaurantSlug: str
   const checkCooldowns = async (tableId: string) => {
     const newCooldowns = {} as Record<RequestType, { until: Date | null, timeLeft: string }>;
     for (const option of requestOptions) {
-      const { data: lastRequest } = await supabase.from('requests').select('created_at').eq('table_id', tableId).eq('type', option.type).order('created_at', { ascending: false }).limit(1)
+      const { data: lastRequest } = await supabase.from('requests').select('created_at').eq('table_id', tableId).eq('type', option.type).order('created_at', { ascending: false }).limit(1);
       if (lastRequest && lastRequest.length > 0) {
         const lastRequestTime = new Date(lastRequest[0].created_at);
         const cooldownMinutes = cooldownSettings[option.type];
         const cooldownUntil = new Date(lastRequestTime.getTime() + cooldownMinutes * 60 * 1000);
         const now = new Date();
         const diff = cooldownUntil.getTime() - now.getTime();
-        const timeLeft = diff > 0 ? (Math.floor(diff / (1000 * 60)) > 0 ? `${Math.floor(diff / (1000 * 60))}m ${Math.floor((diff % (1000 * 60)) / 1000)}s` : `${Math.floor((diff % (1000 * 60)) / 1000)}s`) : '';
+        const minutes = Math.floor(diff / (1000 * 60));
+        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+        const timeLeft = diff > 0 ? (minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`) : '';
         newCooldowns[option.type] = now < cooldownUntil ? { until: cooldownUntil, timeLeft } : { until: null, timeLeft: '' };
       } else { newCooldowns[option.type] = { until: null, timeLeft: '' } }
     }
     setCooldowns(newCooldowns);
-  }
+  };
 
   const uploadPhoto = async (file: File): Promise<string> => {
     const fileExt = file.name.split('.').pop();
@@ -104,7 +109,7 @@ export default function CustomerPage({ params }: { params: { restaurantSlug: str
     if (uploadError) throw uploadError;
     const { data } = supabase.storage.from('photos').getPublicUrl(filePath);
     return data.publicUrl;
-  }
+  };
 
   const handlePhotoSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -114,7 +119,7 @@ export default function CustomerPage({ params }: { params: { restaurantSlug: str
       reader.onloadend = () => setPhotoPreview(reader.result as string);
       reader.readAsDataURL(file);
     }
-  }
+  };
 
   const triggerFileInput = () => fileInputRef.current?.click();
 
@@ -141,9 +146,9 @@ export default function CustomerPage({ params }: { params: { restaurantSlug: str
       setCooldowns(prev => ({ ...prev, [requestType]: { until: cooldownUntil, timeLeft: `${cooldownMinutes}m 0s` } }));
       setTimeout(() => setMessage(''), 4000);
     } catch (error: any) { setMessage(`❌ ${error.message}`) } finally { setSubmitting(null) }
-  }
+  };
 
-  const closePhotoModal = () => { setShowPhotoModal(false); setPhotoFile(null); setPhotoPreview(null) }
+  const closePhotoModal = () => { setShowPhotoModal(false); setPhotoFile(null); setPhotoPreview(null) };
   const isOnCooldown = (requestType: RequestType) => Boolean(cooldowns[requestType]?.until);
 
   if (loading) return <div style={{ minHeight:'100vh', display:'flex', justifyContent:'center', alignItems:'center', color:'white', background: 'linear-gradient(135deg,#0f172a,#1e1b4b,#312e81)' }}>Loading...</div>
