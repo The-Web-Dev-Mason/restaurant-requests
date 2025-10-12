@@ -5,8 +5,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase, type RequestType } from '@/lib/supabase'
 
-// ✅ THE FIX: We define the params type directly and correctly here,
-// which satisfies the strict requirements of the production build.
+// ✅ THIS IS THE FIX: The 'params' type is now defined correctly and explicitly.
 export default function CustomerPage({ params }: { params: { restaurantSlug: string; tableLabel: string } }) {
   const [restaurant, setRestaurant] = useState<any>(null)
   const [table, setTable] = useState<any>(null)
@@ -38,21 +37,21 @@ export default function CustomerPage({ params }: { params: { restaurantSlug: str
     const fetchRestaurantAndTable = async () => {
       setLoading(true);
       try {
-        const { data: restaurantData, error: restaurantError } = await supabase.from('restaurants').select('*').eq('slug', params.restaurantSlug).single()
-        if (restaurantError) throw new Error('Restaurant not found')
-        setRestaurant(restaurantData)
+        const { data: restaurantData, error: restaurantError } = await supabase.from('restaurants').select('*').eq('slug', params.restaurantSlug).single();
+        if (restaurantError) throw new Error('Restaurant not found');
+        setRestaurant(restaurantData);
 
-        const { data: tableData, error: tableError } = await supabase.from('tables').select('*').eq('restaurant_id', restaurantData.id).eq('label', params.tableLabel).single()
-        if (tableError) throw new Error('Table not found')
-        setTable(tableData)
+        const { data: tableData, error: tableError } = await supabase.from('tables').select('*').eq('restaurant_id', restaurantData.id).eq('label', params.tableLabel).single();
+        if (tableError) throw new Error('Table not found');
+        setTable(tableData);
 
-        await checkCooldowns(tableData.id)
+        await checkCooldowns(tableData.id);
       } catch (error: any) {
-        setMessage(`Error: ${error.message}`)
+        setMessage(`Error: ${error.message}`);
       } finally { setLoading(false) }
-    }
+    };
     fetchRestaurantAndTable();
-  }, [params])
+  }, [params]);
 
   useEffect(() => {
     const interval = setInterval(() => {
