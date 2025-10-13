@@ -58,7 +58,7 @@ const TableHeatmap = ({ tables, requests, onTableClick }: { tables: Table[], req
       }
     }
     return requestsByTable;
-  }, [requests]);
+  }, [requests, priorityOrder]);
 
   const sortedTables = [...tables].sort((a, b) => {
     const aLabel = a.label.match(/\d+/g)?.join('') ?? '';
@@ -113,8 +113,8 @@ const RequestDetailsModal = ({ table, requests, onClose, onClearAll }: { table: 
           }) : <p style={{ textAlign: 'center', color: theme.textSecondary }}>No active requests for this table.</p>}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '32px' }}>
-          {activeRequests.length > 0 && (<button onClick={() => onClearAll(table.id)} className="modal-action-button" style={{ background: `linear-gradient(135deg, ${theme.accentGreen}, #059669)` }}>✅ Clear All Requests</button>)}
-          <button onClick={onClose} className="modal-action-button" style={{ background: 'rgba(255,255,255,0.1)' }}>Close</button>
+          {activeRequests.length > 0 && (<button onClick={() => onClearAll(table.id)} className="modal-action-button" style={{ background: `linear-gradient(135deg, ${theme.accentGreen}, #059669)`, border: 'none', color: 'white', padding: '14px', borderRadius: '12px', fontWeight: 700, cursor: 'pointer' }}>✅ Clear All Requests</button>)}
+          <button onClick={onClose} className="modal-action-button" style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', padding: '14px', borderRadius: '12px', fontWeight: 700, cursor: 'pointer' }}>Close</button>
         </div>
       </div>
     </div>
@@ -161,6 +161,7 @@ export default function StaffRequestsPage(): JSX.Element {
     return () => subscription.unsubscribe();
   }, [router]);
 
+  // ✅ FIXED: Realtime subscription with proper filtering
   useEffect(() => {
     if (!restaurantId) return;
 
@@ -170,7 +171,7 @@ export default function StaffRequestsPage(): JSX.Element {
       const tableIds = tableData?.map(t => t.id) || [];
       if (tableIds.length > 0) {
         const { data: requestData } = await supabase.from('requests').select('*, tables(*, restaurants(*))').in('table_id', tableIds).order('created_at', { ascending: false });
-        if (requestData) setRequests(requestData as any);
+        if (requestData) setRequests(requestData as Request[]);
       }
       setAuthLoading(false);
     };
@@ -178,67 +179,94 @@ export default function StaffRequestsPage(): JSX.Element {
     fetchInitialData(restaurantId);
     
     const handleRealtimeUpdate = (payload: RealtimePostgresChangesPayload<Request>) => {
+      // ✅ Only process if this request belongs to one of our tables
+      const isOurTable = tables.some(t => t.id === payload.new?.table_id || t.id === (payload.old as { table_id?: string })?.table_id);
+      if (!isOurTable) return;
+
       if (payload.eventType === 'INSERT') fetchSingleRequestWithDetails(payload.new.id);
       if (payload.eventType === 'UPDATE') fetchSingleRequestWithDetails(payload.new.id);
       if (payload.eventType === 'DELETE') setRequests(prev => prev.filter(r => r.id !== (payload.old as { id: string }).id));
     };
 
-    const channel = supabase.channel(`requests_for_restaurant_${restaurantId}`).on('postgres_changes', { event: '*', schema: 'public', table: 'requests', filter: `table_id=in.(select id from tables where restaurant_id=eq.${restaurantId})` }, handleRealtimeUpdate).subscribe();
-    return () => { supabase.removeChannel(channel) };
-  }, [restaurantId]);
-
-    const fetchSingleRequestWithDetails = async (requestId: string) => {
-      const { data, error } = await supabase.from('requests').select(`*, tables(*, restaurants(*))`).eq('id', requestId).single();
-      if (!error && data) {
-        setRequests(prev => {
-          const existing = prev.find(r => r.id === requestId);
-          if (existing) {
-            return prev.map(r => r.id === requestId ? data as Request : r);
-          }
-          return [data as Request, ...prev];
-        });
-      }
-    };
-
-    const playTone = () => { /* ... */ };
-
-    const updateRequestStatus = async (id: string, newStatus: Request['status']) => {
-      setRequests(prev => prev.map(r => r.id === id ? { ...r, status: newStatus } : r));
-      await supabase.from('requests').update({ status: newStatus }).eq('id', id);
-    };
-    
-    const clearAllRequestsForTable = async (tableId: string) => {
-      setRequests(prev => prev.map(r => r.table_id === tableId && r.status !== 'completed' ? { ...r, status: 'completed' } : r));
-      setSelectedTableForModal(null);
-      playTone();
-      await supabase.from('requests').update({ status: 'completed' }).eq('table_id', tableId).in('status', ['pending', 'in_progress']);
-    };
-
-    // ✅ THIS IS THE CORRECTED FUNCTION
-    const clearAllCompletedRequests = async () => {
-      const tableIdsForThisRestaurant = tables.map(t => t.id);
+    // ✅ Subscribe to ALL requests, filter in the handler
+    const channel = supabase
+      .channel(`requests_for_restaurant_${restaurantId}`)
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'requests'
+      }, handleRealtimeUpdate)
+      .subscribe();
       
-      // Optimistic UI update
-      setRequests(prev => prev.filter(r => r.status !== 'completed'));
-      playTone();
+    return () => { supabase.removeChannel(channel) };
+  }, [restaurantId, tables]);
 
-      // Send the specific, filtered DELETE command
-      await supabase
-        .from('requests')
-        .delete()
-        .eq('status', 'completed')
-        .in('table_id', tableIdsForThisRestaurant); // Only delete from this restaurant's tables
-    };
+  const fetchSingleRequestWithDetails = async (requestId: string) => {
+    const { data, error } = await supabase.from('requests').select(`*, tables(*, restaurants(*))`).eq('id', requestId).single();
+    if (!error && data) {
+      setRequests(prev => {
+        const existing = prev.find(r => r.id === requestId);
+        if (existing) {
+          return prev.map(r => r.id === requestId ? data as Request : r);
+        }
+        return [data as Request, ...prev];
+      });
+    }
+  };
 
-    const getTimeAgo = (date: string) => {
-      const diff = (Date.now() - new Date(date).getTime()) / 1000;
-      if (diff < 60) return 'Just now';
-      if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-      return `${Math.floor(diff / 3600)}h ago`;
-    };
+  const playTone = () => {
+    if (typeof window !== 'undefined' && 'AudioContext' in window) {
+      const audioContext = new AudioContext();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      oscillator.frequency.value = 800;
+      oscillator.type = 'sine';
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.5);
+    }
+  };
 
-    const filteredRequests = useMemo(() => filter === 'all' ? requests : requests.filter(r => r.status === filter), [requests, filter]);
-    const completedCount = useMemo(() => requests.filter(r => r.status === 'completed').length, [requests]);
+  const updateRequestStatus = async (id: string, newStatus: Request['status']) => {
+    setRequests(prev => prev.map(r => r.id === id ? { ...r, status: newStatus } : r));
+    await supabase.from('requests').update({ status: newStatus }).eq('id', id);
+    if (newStatus === 'completed') playTone();
+  };
+  
+  const clearAllRequestsForTable = async (tableId: string) => {
+    setRequests(prev => prev.map(r => r.table_id === tableId && r.status !== 'completed' ? { ...r, status: 'completed' } : r));
+    setSelectedTableForModal(null);
+    playTone();
+    await supabase.from('requests').update({ status: 'completed' }).eq('table_id', tableId).in('status', ['pending', 'in_progress']);
+  };
+
+  const clearAllCompletedRequests = async () => {
+    const tableIdsForThisRestaurant = tables.map(t => t.id);
+    
+    // Optimistic UI update
+    setRequests(prev => prev.filter(r => r.status !== 'completed'));
+    playTone();
+
+    // Send the specific, filtered DELETE command
+    await supabase
+      .from('requests')
+      .delete()
+      .eq('status', 'completed')
+      .in('table_id', tableIdsForThisRestaurant);
+  };
+
+  const getTimeAgo = (date: string) => {
+    const diff = (Date.now() - new Date(date).getTime()) / 1000;
+    if (diff < 60) return 'Just now';
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    return `${Math.floor(diff / 3600)}h ago`;
+  };
+
+  const filteredRequests = useMemo(() => filter === 'all' ? requests : requests.filter(r => r.status === filter), [requests, filter]);
+  const completedCount = useMemo(() => requests.filter(r => r.status === 'completed').length, [requests]);
 
   const formattedTime = currentTime.toLocaleTimeString('en-GB');
   const formattedDate = currentTime.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
