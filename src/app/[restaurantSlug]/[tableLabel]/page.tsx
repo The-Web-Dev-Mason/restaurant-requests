@@ -6,7 +6,6 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase, type RequestType } from '@/lib/supabase'
 import Image from 'next/image'
 
-// ✅ Proper TypeScript types
 interface Restaurant {
   id: string
   name: string
@@ -24,7 +23,6 @@ interface PageProps {
 }
 
 export default function CustomerPage({ params }: PageProps) {
-  const [resolvedParams, setResolvedParams] = useState<{ restaurantSlug: string; tableLabel: string } | null>(null)
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null)
   const [table, setTable] = useState<Table | null>(null)
   const [loading, setLoading] = useState(true)
@@ -51,7 +49,6 @@ export default function CustomerPage({ params }: PageProps) {
     { type: 'request_sauces' as RequestType, icon: '🥫', label: 'Sauces & Condiments', description: 'Need sauce or seasonings', colors: ['#6366f1', '#4f46e5'], requiresPhoto: false },
   ];
 
-  // ✅ Memoize checkCooldowns to fix exhaustive-deps warning
   const checkCooldowns = useCallback(async (tableId: string) => {
     const newCooldowns = {} as Record<RequestType, { until: Date | null, timeLeft: string }>;
     for (const option of requestOptions) {
@@ -71,16 +68,14 @@ export default function CustomerPage({ params }: PageProps) {
     setCooldowns(newCooldowns);
   }, [cooldownSettings, requestOptions]);
 
+  // ✅ FIX: Combine params resolution and data fetching into ONE effect
   useEffect(() => {
-    params.then(p => setResolvedParams(p))
-  }, [params])
-
-  useEffect(() => {
-    if (!resolvedParams) return;
-
-    const fetchRestaurantAndTable = async () => {
-      setLoading(true);
+    const fetchData = async () => {
       try {
+        // Resolve params
+        const resolvedParams = await params;
+        
+        // Fetch restaurant
         const { data: restaurantData, error: restaurantError } = await supabase
           .from('restaurants')
           .select('*')
@@ -90,6 +85,7 @@ export default function CustomerPage({ params }: PageProps) {
         if (restaurantError) throw new Error('Restaurant not found');
         setRestaurant(restaurantData as Restaurant);
 
+        // Fetch table
         const { data: tableData, error: tableError } = await supabase
           .from('tables')
           .select('*')
@@ -100,17 +96,18 @@ export default function CustomerPage({ params }: PageProps) {
         if (tableError) throw new Error('Table not found');
         setTable(tableData as Table);
 
+        // Check cooldowns
         await checkCooldowns(tableData.id);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
         setMessage(`Error: ${errorMessage}`);
       } finally { 
-        setLoading(false) 
+        setLoading(false);
       }
     };
     
-    fetchRestaurantAndTable();
-  }, [resolvedParams, checkCooldowns]);
+    fetchData();
+  }, [params, checkCooldowns]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -192,7 +189,8 @@ export default function CustomerPage({ params }: PageProps) {
   const closePhotoModal = () => { setShowPhotoModal(false); setPhotoFile(null); setPhotoPreview(null) };
   const isOnCooldown = (requestType: RequestType) => Boolean(cooldowns[requestType]?.until);
 
-  if (!resolvedParams || loading) return <div style={{ minHeight:'100vh', display:'flex', justifyContent:'center', alignItems:'center', color:'white', background: 'linear-gradient(135deg,#0f172a,#1e1b4b,#312e81)' }}>Loading...</div>
+  // ✅ Simplified loading check - only one condition
+  if (loading) return <div style={{ minHeight:'100vh', display:'flex', justifyContent:'center', alignItems:'center', color:'white', background: 'linear-gradient(135deg,#0f172a,#1e1b4b,#312e81)' }}>Loading...</div>
   if (message.includes('Error')) return <div style={{ minHeight:'100vh', display:'flex', justifyContent:'center', alignItems:'center', color:'red', background: 'linear-gradient(135deg,#0f172a,#1e1b4b,#312e81)' }}>{message}</div>
   if (!restaurant || !table) return <div style={{ minHeight:'100vh', display:'flex', justifyContent:'center', alignItems:'center', color:'white', background: 'linear-gradient(135deg,#0f172a,#1e1b4b,#312e81)' }}>Restaurant or Table not found</div>
 
@@ -221,7 +219,7 @@ export default function CustomerPage({ params }: PageProps) {
         
         {message && <div style={{background: message.includes('✨')?'linear-gradient(135deg,#10b981,#059669)':message.includes('⏳')?'linear-gradient(135deg,#f59e0b,#d97706)':'linear-gradient(135deg,#ef4444,#dc2626)', color:'white', padding:'24px', borderRadius:'24px', marginBottom:'32px', textAlign:'center', fontSize:'18px', fontWeight:'700', backdropFilter:'blur(20px)', boxShadow:'0 20px 50px rgba(0,0,0,0.3)'}}>{message}</div>}
         
-        <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit,minmin(300px,1fr))', gap:'24px', marginBottom:'40px'}}>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))', gap:'24px', marginBottom:'40px'}}>
           {requestOptions.map((option)=>{
             const onCooldown = isOnCooldown(option.type);
             const isSubmittingThis = submitting === option.type;
