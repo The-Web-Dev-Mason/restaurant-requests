@@ -6,7 +6,6 @@ import React, { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 
-// Use the same theme for consistency
 const theme = {
   bgGradient: 'linear-gradient(135deg, #0f172a, #1e1b4b, #312e81)',
   cardGlass: 'rgba(30, 27, 75, 0.4)',
@@ -20,7 +19,6 @@ const theme = {
   accentRed: '#ef4444',
 }
 
-// Data structures for our analytics
 interface RequestTypeData {
   name: string
   value: number
@@ -31,7 +29,6 @@ interface HourlyData {
   requests: number
 }
 
-// Request labels for our charts
 const requestLabels: { [key: string]: string } = {
   table_clean: 'Table Clean',
   toilet_clean: 'Toilet Issue',
@@ -47,39 +44,59 @@ export default function ReportsPage() {
   const [requestTypeData, setRequestTypeData] = useState<RequestTypeData[]>([])
   const [hourlyData, setHourlyData] = useState<HourlyData[]>([])
   const [loading, setLoading] = useState(true)
-  const [refreshKey, setRefreshKey] = useState(0);
 
-  useEffect(() => {
-    const fetchAnalyticsData = async () => {
-      setLoading(true)
-
-      const { data: typeData, error: typeError } = await supabase.rpc('get_request_type_counts')
-      if (typeData) {
-        const formattedTypeData = typeData.map((item: any) => ({
-          name: requestLabels[item.type] || item.type,
-          value: item.request_count,
-        }));
-        setRequestTypeData(formattedTypeData);
-      } else if (typeError) {
-        console.error("Error fetching request type counts:", typeError);
-      }
-
-      const { data: hourlyRawData, error: hourlyError } = await supabase.rpc('get_hourly_request_counts')
-      if (hourlyRawData) {
-        const formattedHourlyData = hourlyRawData.map((item: any) => ({
-          hour: `${item.hour}:00`,
-          requests: item.request_count,
-        })).sort((a,b) => parseInt(a.hour) - parseInt(b.hour));
-        setHourlyData(formattedHourlyData);
-      } else if (hourlyError) {
-        console.error("Error fetching hourly counts:", hourlyError);
-      }
-      
-      setLoading(false)
+  // ✅ Function to fetch and format analytics data
+  const fetchAnalyticsData = async () => {
+    const { data: typeData, error: typeError } = await supabase.rpc('get_request_type_counts')
+    if (typeData) {
+      const formattedTypeData = typeData.map((item: any) => ({
+        name: requestLabels[item.type] || item.type,
+        value: item.request_count,
+      }));
+      setRequestTypeData(formattedTypeData);
+    } else if (typeError) {
+      console.error("Error fetching request type counts:", typeError);
     }
 
+    const { data: hourlyRawData, error: hourlyError } = await supabase.rpc('get_hourly_request_counts')
+    if (hourlyRawData) {
+      const formattedHourlyData = hourlyRawData.map((item: any) => ({
+        hour: `${item.hour}:00`,
+        requests: item.request_count,
+      })).sort((a, b) => parseInt(a.hour) - parseInt(b.hour));
+      setHourlyData(formattedHourlyData);
+    } else if (hourlyError) {
+      console.error("Error fetching hourly counts:", hourlyError);
+    }
+    
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    // Load initial data
     fetchAnalyticsData()
-  }, [refreshKey])
+
+    // ✅ SET UP REAL-TIME LISTENER: Refresh data whenever requests table changes
+    const channel = supabase
+      .channel('requests_changes')
+      .on('postgres_changes', 
+        {
+          event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
+          schema: 'public',
+          table: 'requests'
+        },
+        () => {
+          // When any request changes, refetch the analytics
+          fetchAnalyticsData()
+        }
+      )
+      .subscribe()
+
+    // Cleanup subscription when component unmounts
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [])
 
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 'calc(100vh - 60px)', background: theme.bgGradient, color: theme.textPrimary }}>
@@ -97,7 +114,7 @@ export default function ReportsPage() {
         <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', flexWrap: 'wrap', gap: '16px' }}>
           <h1 style={{ fontWeight: 800, fontSize: '32px', margin: 0 }}>📊 Analytics & Reports</h1>
           <button 
-            onClick={() => setRefreshKey(prev => prev + 1)}
+            onClick={() => fetchAnalyticsData()}
             style={{
               background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
               color: 'white', padding: '10px 20px', borderRadius: '12px', fontWeight: '600',
@@ -108,7 +125,7 @@ export default function ReportsPage() {
           </button>
         </header>
         
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr', lg: 'gridTemplateColumns: "1fr 1fr"', gap: '24px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '24px' }}>
           <div style={{ background: theme.cardGlass, border: theme.cardBorder, borderRadius: '24px', padding: '24px', backdropFilter: 'blur(20px)' }}>
             <h2 style={{ color: theme.textPrimary, fontWeight: 700, fontSize: '20px', marginBottom: '20px' }}>Most Common Requests</h2>
             <ResponsiveContainer width="100%" height={300}>
@@ -124,7 +141,6 @@ export default function ReportsPage() {
                     borderColor: 'rgba(255,255,255,0.2)',
                     borderRadius: '12px'
                   }}
-                  // ✅ FIX IS HERE: Style the text inside the tooltip
                   itemStyle={{ color: theme.textPrimary }} 
                 />
                 <Legend 
@@ -132,7 +148,6 @@ export default function ReportsPage() {
                   layout="vertical" 
                   verticalAlign="middle" 
                   align="right" 
-                  // ✅ AND HERE: Style the text for the legend
                   wrapperStyle={{ color: theme.textPrimary }}
                 />
               </PieChart>
@@ -152,7 +167,6 @@ export default function ReportsPage() {
                     borderColor: 'rgba(255,255,255,0.2)',
                     borderRadius: '12px'
                   }}
-                  // ✅ ALSO FIXING THE TEXT FOR THE BAR CHART TOOLTIP
                   labelStyle={{ color: theme.textSecondary }}
                   itemStyle={{ color: theme.textPrimary }}
                 />
