@@ -22,6 +22,21 @@ interface PageProps {
   params: Promise<{ restaurantSlug: string; tableLabel: string }>
 }
 
+// ✅ MOVED OUTSIDE COMPONENT - prevents recreation on every render
+const cooldownSettings = {
+  'toilet_clean': 15, 'ready_to_order': 10, 'table_clean': 10,
+  'additional_order': 5, 'replace_cutlery': 5, 'request_sauces': 3
+} as const;
+
+const requestOptions = [
+  { type: 'table_clean' as RequestType, icon: '🧽', label: 'Clean Table', description: 'Need table cleaned & sanitized', colors: ['#3b82f6', '#06b6d4'], requiresPhoto: false },
+  { type: 'toilet_clean' as RequestType, icon: '🚽', label: 'Toilet Issue', description: 'Report restroom problem', colors: ['#ef4444', '#ec4899'], requiresPhoto: true },
+  { type: 'ready_to_order' as RequestType, icon: '🍽️', label: 'Ready to Order', description: 'Ready to place our order', colors: ['#10b981', '#059669'], requiresPhoto: false },
+  { type: 'additional_order' as RequestType, icon: '➕', label: 'Order More', description: 'Want to add more items', colors: ['#f59e0b', '#d97706'], requiresPhoto: false },
+  { type: 'replace_cutlery' as RequestType, icon: '🍴', label: 'New Cutlery', description: 'Need fresh utensils', colors: ['#8b5cf6', '#7c3aed'], requiresPhoto: false },
+  { type: 'request_sauces' as RequestType, icon: '🥫', label: 'Sauces & Condiments', description: 'Need sauce or seasonings', colors: ['#6366f1', '#4f46e5'], requiresPhoto: false },
+];
+
 export default function CustomerPage({ params }: PageProps) {
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null)
   const [table, setTable] = useState<Table | null>(null)
@@ -35,47 +50,47 @@ export default function CustomerPage({ params }: PageProps) {
   const [showSparkle, setShowSparkle] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const cooldownSettings = {
-    'toilet_clean': 15, 'ready_to_order': 10, 'table_clean': 10,
-    'additional_order': 5, 'replace_cutlery': 5, 'request_sauces': 3
-  } as const;
-
-  const requestOptions = [
-    { type: 'table_clean' as RequestType, icon: '🧽', label: 'Clean Table', description: 'Need table cleaned & sanitized', colors: ['#3b82f6', '#06b6d4'], requiresPhoto: false },
-    { type: 'toilet_clean' as RequestType, icon: '🚽', label: 'Toilet Issue', description: 'Report restroom problem', colors: ['#ef4444', '#ec4899'], requiresPhoto: true },
-    { type: 'ready_to_order' as RequestType, icon: '🍽️', label: 'Ready to Order', description: 'Ready to place our order', colors: ['#10b981', '#059669'], requiresPhoto: false },
-    { type: 'additional_order' as RequestType, icon: '➕', label: 'Order More', description: 'Want to add more items', colors: ['#f59e0b', '#d97706'], requiresPhoto: false },
-    { type: 'replace_cutlery' as RequestType, icon: '🍴', label: 'New Cutlery', description: 'Need fresh utensils', colors: ['#8b5cf6', '#7c3aed'], requiresPhoto: false },
-    { type: 'request_sauces' as RequestType, icon: '🥫', label: 'Sauces & Condiments', description: 'Need sauce or seasonings', colors: ['#6366f1', '#4f46e5'], requiresPhoto: false },
-  ];
-
+  // ✅ FIXED: useCallback now has stable dependencies
   const checkCooldowns = useCallback(async (tableId: string) => {
     const newCooldowns = {} as Record<RequestType, { until: Date | null, timeLeft: string }>;
+    
     for (const option of requestOptions) {
-      const { data: lastRequest } = await supabase.from('requests').select('created_at').eq('table_id', tableId).eq('type', option.type).order('created_at', { ascending: false }).limit(1);
+      const { data: lastRequest } = await supabase
+        .from('requests')
+        .select('created_at')
+        .eq('table_id', tableId)
+        .eq('type', option.type)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      
       if (lastRequest && lastRequest.length > 0) {
         const lastRequestTime = new Date(lastRequest[0].created_at);
         const cooldownMinutes = cooldownSettings[option.type];
         const cooldownUntil = new Date(lastRequestTime.getTime() + cooldownMinutes * 60 * 1000);
         const now = new Date();
         const diff = cooldownUntil.getTime() - now.getTime();
-        const minutes = Math.floor(diff / (1000 * 60));
-        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-        const timeLeft = diff > 0 ? (minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`) : '';
-        newCooldowns[option.type] = now < cooldownUntil ? { until: cooldownUntil, timeLeft } : { until: null, timeLeft: '' };
-      } else { newCooldowns[option.type] = { until: null, timeLeft: '' } }
+        
+        if (diff > 0) {
+          const minutes = Math.floor(diff / (1000 * 60));
+          const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+          const timeLeft = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+          newCooldowns[option.type] = { until: cooldownUntil, timeLeft };
+        } else {
+          newCooldowns[option.type] = { until: null, timeLeft: '' };
+        }
+      } else {
+        newCooldowns[option.type] = { until: null, timeLeft: '' };
+      }
     }
+    
     setCooldowns(newCooldowns);
-  }, [cooldownSettings, requestOptions]);
+  }, []); // ✅ Empty dependencies - function is now stable
 
-  // ✅ FIX: Combine params resolution and data fetching into ONE effect
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Resolve params
         const resolvedParams = await params;
         
-        // Fetch restaurant
         const { data: restaurantData, error: restaurantError } = await supabase
           .from('restaurants')
           .select('*')
@@ -85,7 +100,6 @@ export default function CustomerPage({ params }: PageProps) {
         if (restaurantError) throw new Error('Restaurant not found');
         setRestaurant(restaurantData as Restaurant);
 
-        // Fetch table
         const { data: tableData, error: tableError } = await supabase
           .from('tables')
           .select('*')
@@ -96,7 +110,6 @@ export default function CustomerPage({ params }: PageProps) {
         if (tableError) throw new Error('Table not found');
         setTable(tableData as Table);
 
-        // Check cooldowns
         await checkCooldowns(tableData.id);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
@@ -109,28 +122,38 @@ export default function CustomerPage({ params }: PageProps) {
     fetchData();
   }, [params, checkCooldowns]);
 
+  // ✅ FIXED: Simplified cooldown timer - only updates time display
   useEffect(() => {
     const interval = setInterval(() => {
-        setCooldowns(prev => {
-          const updated = { ...prev };
-          let hasChanges = false;
-          for (const type of Object.keys(updated) as RequestType[]) {
-            if (updated[type] && updated[type].until) {
-                const diff = new Date(updated[type].until!).getTime() - new Date().getTime();
-                const minutes = Math.floor(diff / (1000 * 60));
-                const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-                const newTimeLeft = diff > 0 ? (minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`) : '';
-
-                if (newTimeLeft !== updated[type].timeLeft) {
-                    updated[type] = { ...updated[type], timeLeft: newTimeLeft };
-                    if (newTimeLeft === '') updated[type].until = null;
-                    hasChanges = true;
-                }
+      setCooldowns(prev => {
+        const updated = { ...prev };
+        let hasChanges = false;
+        
+        for (const type of Object.keys(updated) as RequestType[]) {
+          if (updated[type]?.until) {
+            const diff = new Date(updated[type].until!).getTime() - Date.now();
+            
+            if (diff > 0) {
+              const minutes = Math.floor(diff / (1000 * 60));
+              const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+              const newTimeLeft = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+              
+              if (newTimeLeft !== updated[type].timeLeft) {
+                updated[type] = { ...updated[type], timeLeft: newTimeLeft };
+                hasChanges = true;
+              }
+            } else {
+              // Cooldown expired
+              updated[type] = { until: null, timeLeft: '' };
+              hasChanges = true;
             }
           }
-          return hasChanges ? updated : prev;
-        })
+        }
+        
+        return hasChanges ? updated : prev;
+      });
     }, 1000);
+    
     return () => clearInterval(interval);
   }, []);
 
@@ -158,15 +181,31 @@ export default function CustomerPage({ params }: PageProps) {
 
   const submitRequest = async (requestType: RequestType) => {
     if (!table) return;
-    if (cooldowns[requestType]?.until) { setMessage(`⏳ Please wait ${cooldowns[requestType].timeLeft} before making this request again.`); setTimeout(() => setMessage(''), 4000); return }
+    if (cooldowns[requestType]?.until) { 
+      setMessage(`⏳ Please wait ${cooldowns[requestType].timeLeft} before making this request again.`); 
+      setTimeout(() => setMessage(''), 4000); 
+      return;
+    }
+    
     const option = requestOptions.find(opt => opt.type === requestType);
-    if (option?.requiresPhoto && !photoFile) { setShowPhotoModal(true); return }
+    if (option?.requiresPhoto && !photoFile) { 
+      setShowPhotoModal(true); 
+      return;
+    }
 
-    setSubmitting(requestType); setMessage('')
+    setSubmitting(requestType); 
+    setMessage('');
+    
     try {
       let photoUrl = null;
       if (photoFile && option?.requiresPhoto) photoUrl = await uploadPhoto(photoFile);
-      const { error } = await supabase.from('requests').insert({ table_id: table.id, type: requestType, photo_url: photoUrl });
+      
+      const { error } = await supabase.from('requests').insert({ 
+        table_id: table.id, 
+        type: requestType, 
+        photo_url: photoUrl 
+      });
+      
       if (error) throw error;
 
       setShowSparkle(true);
@@ -174,22 +213,35 @@ export default function CustomerPage({ params }: PageProps) {
 
       setMessage('✨ Request sent! Our team will assist you shortly.');
       closePhotoModal();
+      
+      // Set cooldown
       const cooldownMinutes = cooldownSettings[requestType];
       const cooldownUntil = new Date(Date.now() + cooldownMinutes * 60 * 1000);
-      setCooldowns(prev => ({ ...prev, [requestType]: { until: cooldownUntil, timeLeft: `${cooldownMinutes}m 0s` } }));
+      setCooldowns(prev => ({ 
+        ...prev, 
+        [requestType]: { 
+          until: cooldownUntil, 
+          timeLeft: `${cooldownMinutes}m 0s` 
+        } 
+      }));
+      
       setTimeout(() => setMessage(''), 4000);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Request failed';
       setMessage(`❌ ${errorMessage}`);
     } finally { 
-      setSubmitting(null) 
+      setSubmitting(null);
     }
   };
 
-  const closePhotoModal = () => { setShowPhotoModal(false); setPhotoFile(null); setPhotoPreview(null) };
+  const closePhotoModal = () => { 
+    setShowPhotoModal(false); 
+    setPhotoFile(null); 
+    setPhotoPreview(null);
+  };
+  
   const isOnCooldown = (requestType: RequestType) => Boolean(cooldowns[requestType]?.until);
 
-  // ✅ Simplified loading check - only one condition
   if (loading) return <div style={{ minHeight:'100vh', display:'flex', justifyContent:'center', alignItems:'center', color:'white', background: 'linear-gradient(135deg,#0f172a,#1e1b4b,#312e81)' }}>Loading...</div>
   if (message.includes('Error')) return <div style={{ minHeight:'100vh', display:'flex', justifyContent:'center', alignItems:'center', color:'red', background: 'linear-gradient(135deg,#0f172a,#1e1b4b,#312e81)' }}>{message}</div>
   if (!restaurant || !table) return <div style={{ minHeight:'100vh', display:'flex', justifyContent:'center', alignItems:'center', color:'white', background: 'linear-gradient(135deg,#0f172a,#1e1b4b,#312e81)' }}>Restaurant or Table not found</div>
@@ -226,7 +278,7 @@ export default function CustomerPage({ params }: PageProps) {
             return (
               <button key={option.type} onClick={()=>submitRequest(option.type)} disabled={onCooldown || isSubmittingThis} style={{
                 background: onCooldown || isSubmittingThis?'rgba(71,85,105,0.3)':`linear-gradient(135deg,${option.colors[0]},${option.colors[1]})`,
-                color:'white', borderRadius:'28px', padding:'36px 28px', cursor:onCooldown?'not-allowed':'pointer', boxShadow:onCooldown?'0 10px 30px rgba(0,0,0,0.2)':'0 20px 50px rgba(0,0,0,0.3)', fontSize:'16px', fontWeight:'600', backdropFilter:'blur(20px)', opacity:onCooldown?0.5:1, position:'relative', overflow:'hidden', transition:'all 0.4s'
+                color:'white', borderRadius:'28px', padding:'36px 28px', cursor:onCooldown?'not-allowed':'pointer', boxShadow:onCooldown?'0 10px 30px rgba(0,0,0,0.2)':'0 20px 50px rgba(0,0,0,0.3)', fontSize:'16px', fontWeight:'600', backdropFilter:'blur(20px)', opacity:onCooldown?0.5:1, position:'relative', overflow:'hidden', transition:'all 0.4s', border: 'none'
               }}>
                 <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:'16px'}}>
                   <div style={{fontSize:'56px', marginBottom:'8px', filter: onCooldown || isSubmittingThis?'grayscale(100%)':'drop-shadow(0 4px 12px rgba(0,0,0,0.3))'}}>
