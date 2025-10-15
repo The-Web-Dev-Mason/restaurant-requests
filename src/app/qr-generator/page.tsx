@@ -15,6 +15,7 @@ const theme = {
   textSecondary: '#A5B4FC',
   accentPurple: '#8b5cf6',
   accentPink: '#ec4899',
+  bgGradient: 'linear-gradient(135deg, #0f172a, #1e1b4b, #312e81)',
 }
 
 interface Table {
@@ -33,6 +34,7 @@ export default function QrGeneratorPage() {
   const [tables, setTables] = useState<Table[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [visibleQRs, setVisibleQRs] = useState<Set<string>>(new Set());
   const router = useRouter();
   const qrCodeRef = useRef<any>(null);
 
@@ -85,64 +87,74 @@ export default function QrGeneratorPage() {
     setLoading(false);
   };
 
-  const downloadQRCode = (table: Table) => {
-    const canvas = document.getElementById(`qr-canvas-${table.id}`) as HTMLCanvasElement;
-    if (canvas) {
-      const pngUrl = canvas.toDataURL("image/png").replace("image/png", "image/octet-stream");
-      let downloadLink = document.createElement("a");
-      downloadLink.href = pngUrl;
-      downloadLink.download = `${restaurant?.slug}-table-${table.label}-qr.png`;
-      document.body.appendChild(downloadLink);
-      downloadLink.click();
-      document.body.removeChild(downloadLink);
+  const toggleQRVisibility = (tableId: string) => {
+    const newVisibleQRs = new Set(visibleQRs);
+    if (newVisibleQRs.has(tableId)) {
+      newVisibleQRs.delete(tableId);
+    } else {
+      newVisibleQRs.add(tableId);
     }
+    setVisibleQRs(newVisibleQRs);
   };
 
   const siteUrl = typeof window !== 'undefined' ? window.location.origin : '';
 
   if (loading) {
-    return <div style={{ color: theme.textPrimary, textAlign: 'center', padding: '40px' }}>Loading QR Generator...</div>;
+    return <div style={{ color: theme.textPrimary, textAlign: 'center', padding: '40px', background: theme.bgGradient, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading QR Generator...</div>;
   }
   
   if (error) {
-    return <div style={{ color: theme.accentRed, textAlign: 'center', padding: '40px' }}>{error}</div>;
+    return <div style={{ color: '#ef4444', textAlign: 'center', padding: '40px', background: theme.bgGradient, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{error}</div>;
   }
 
   return (
-    <div style={{ maxWidth: '800px', margin: '40px auto', padding: '24px' }}>
-      <h1 style={{ color: theme.textPrimary, fontWeight: 800, fontSize: '32px', marginBottom: '32px' }}>📷 QR Code Generator</h1>
+    <div style={{ minHeight: '100vh', background: theme.bgGradient, padding: '24px' }}>
+      <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+        <h1 style={{ color: theme.textPrimary, fontWeight: 800, fontSize: '32px', marginBottom: '32px', marginTop: 0 }}>📷 QR Code Generator</h1>
 
-      <div style={{ background: theme.cardGlass, border: theme.cardBorder, borderRadius: '24px', padding: '32px', backdropFilter: 'blur(20px)' }}>
-        <h2 style={{ color: theme.textPrimary, fontWeight: 700, fontSize: '20px', marginTop: 0, marginBottom: '24px' }}>Your Restaurant's Tables</h2>
-        
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {tables.length === 0 ? (
-            <p style={{color: theme.textSecondary, textAlign: 'center'}}>No tables found. Please add tables in the 'Admin' panel first.</p>
-          ) : (
-            tables.map(table => {
-              const url = `${siteUrl}/${restaurant?.slug}/${table.label}`;
-              return (
-                <div key={table.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.2)', padding: '12px 16px', borderRadius: '12px' }}>
-                  <span style={{ fontWeight: 600, fontSize: '16px' }}>Table {table.label}</span>
-                  
-                  {/* Hidden canvas for generating the QR code */}
-                  <div style={{ display: 'none' }}>
-                    <QRCodeCanvas id={`qr-canvas-${table.id}`} value={url} size={512} />
+        <div style={{ background: theme.cardGlass, border: theme.cardBorder, borderRadius: '24px', padding: '32px', backdropFilter: 'blur(20px)' }}>
+          <h2 style={{ color: theme.textPrimary, fontWeight: 700, fontSize: '20px', marginTop: 0, marginBottom: '24px' }}>Your Restaurant's Tables</h2>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {tables.length === 0 ? (
+              <p style={{color: theme.textSecondary, textAlign: 'center'}}>No tables found. Please add tables in the 'Admin' panel first.</p>
+            ) : (
+              tables.map(table => {
+                const url = `${siteUrl}/${restaurant?.slug}/${table.label}`;
+                const isVisible = visibleQRs.has(table.id);
+                return (
+                  <div key={table.id} style={{ background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isVisible ? '16px' : 0 }}>
+                      <span style={{ fontWeight: 600, fontSize: '16px', color: theme.textPrimary }}>Table {table.label}</span>
+                      
+                      <button 
+                        onClick={() => toggleQRVisibility(table.id)}
+                        style={{
+                          background: `linear-gradient(135deg, ${theme.accentPurple}, ${theme.accentPink})`,
+                          border: 'none',
+                          color: 'white',
+                          padding: '8px 16px',
+                          borderRadius: '12px',
+                          fontWeight: '600',
+                          cursor: 'pointer',
+                          fontSize: '14px'
+                        }}
+                      >
+                        {isVisible ? 'Hide QR' : 'Show QR'}
+                      </button>
+                    </div>
+                    
+                    {isVisible && (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                        <QRCodeCanvas id={`qr-canvas-${table.id}`} value={url} size={300} level="H" includeMargin={true} />
+                        <p style={{ color: theme.textSecondary, fontSize: '12px', margin: '0', textAlign: 'center', wordBreak: 'break-all' }}>{url}</p>
+                      </div>
+                    )}
                   </div>
-
-                  <button 
-                    onClick={() => downloadQRCode(table)}
-                    style={{
-                      background: `linear-gradient(135deg, ${theme.accentPurple}, ${theme.accentPink})`, border: 'none', color: 'white',
-                      padding: '8px 16px', borderRadius: '12px', fontWeight: '600', cursor: 'pointer'
-                    }}
-                  >
-                    Download QR
-                  </button>
-                </div>
-              )
-            })
-          )}
+                )
+              })
+            )}
+          </div>
         </div>
       </div>
     </div>
