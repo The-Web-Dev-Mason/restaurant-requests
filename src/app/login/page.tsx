@@ -171,9 +171,7 @@ export default function LoginPage() {
           opacity: 0.7;
           cursor: not-allowed;
         }
-        .spinning-logo {
-          animation: spin 10s linear infinite;
-        }
+       
       `}</style>
 
       <div style={{
@@ -186,7 +184,6 @@ export default function LoginPage() {
         }}>
           
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '24px' }}>
-            <div className="spinning-logo">
               <Image
                 src="/logo.png"
                 alt="Table Bud Logo"
@@ -195,7 +192,6 @@ export default function LoginPage() {
                 priority
                 style={{ filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.4))' }}
               />
-            </div>
           </div>
           
           <h1 style={{ color: theme.textPrimary, textAlign: 'center', fontWeight: 800, margin: '0 0 32px 0' }}>
