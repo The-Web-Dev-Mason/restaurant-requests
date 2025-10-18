@@ -17,17 +17,15 @@ const theme = {
   accentPink: '#ec4899',
 }
 
-// ✅ NEW HELPER FUNCTION TO CREATE A URL-FRIENDLY SLUG
 const generateSlug = (name: string) => {
   return name
     .toLowerCase()
-    .replace(/\s+/g, '-') // Replace spaces with -
-    .replace(/[^\w\-]+/g, '') // Remove all non-word chars
-    .replace(/\-\-+/g, '-') // Replace multiple - with single -
-    .replace(/^-+/, '') // Trim - from start of text
-    .replace(/-+$/, ''); // Trim - from end of text
+    .replace(/\s+/g, '-')
+    .replace(/[^\w\-]+/g, '')
+    .replace(/\-\-+/g, '-')
+    .replace(/^-+/, '')
+    .replace(/-+$/, '');
 };
-
 
 export default function LoginPage() {
   const [view, setView] = useState('signIn'); 
@@ -67,12 +65,10 @@ export default function LoginPage() {
         return;
     }
 
-    // ✅ GENERATE THE SLUG FROM THE RESTAURANT NAME
     const slug = generateSlug(restaurantName);
 
     const { data: newRestaurant, error: restaurantError } = await supabase
       .from('restaurants')
-      // ✅ INCLUDE THE SLUG IN THE INSERT QUERY
       .insert({ name: restaurantName, user_id: user.id, slug: slug })
       .select('id')
       .single();
@@ -145,6 +141,17 @@ export default function LoginPage() {
   return (
     <>
       <style jsx global>{`
+        body {
+          margin: 0;
+          padding: 0;
+          font-family: 'Inter', sans-serif;
+          background: ${theme.bgGradient};
+        }
+        @keyframes spin {
+          to {
+            transform: rotate(360deg);
+          }
+        }
         .login-button {
           background: linear-gradient(135deg, ${theme.accentPurple}, ${theme.accentPink});
           border: none;
@@ -164,6 +171,9 @@ export default function LoginPage() {
           opacity: 0.7;
           cursor: not-allowed;
         }
+        .spinning-logo {
+          animation: spin 3s linear infinite;
+        }
       `}</style>
 
       <div style={{
@@ -176,14 +186,16 @@ export default function LoginPage() {
         }}>
           
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '24px' }}>
-            <Image
-              src="/logo.png"
-              alt="Table Bud Logo"
-              width={300}
-              height={280}
-              priority
-              style={{ filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.4))' }}
-            />
+            <div className="spinning-logo">
+              <Image
+                src="/logo.png"
+                alt="Table Bud Logo"
+                width={300}
+                height={280}
+                priority
+                style={{ filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.4))' }}
+              />
+            </div>
           </div>
           
           <h1 style={{ color: theme.textPrimary, textAlign: 'center', fontWeight: 800, margin: '0 0 32px 0' }}>
