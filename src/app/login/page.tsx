@@ -172,7 +172,7 @@ export default function LoginPage() {
           cursor: not-allowed;
         }
         .spinning-logo {
-          animation: spin 3s linear infinite;
+          animation: spin 10s linear infinite;
         }
       `}</style>
 
