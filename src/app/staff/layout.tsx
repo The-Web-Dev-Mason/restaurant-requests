@@ -39,6 +39,9 @@ export default function StaffLayout({
         <Link href="/staff/admin" style={{ color: 'white', textDecoration: 'none', fontWeight: '700', fontSize: '16px' }}>
           Admin
         </Link>
+        <a href="https://table-bud-v2.netlify.app/qr-generator" target="_blank" rel="noopener noreferrer" style={{ color: 'white', textDecoration: 'none', fontWeight: '700', fontSize: '16px' }}>
+          QR Generator
+        </a>
         
         <button 
           onClick={handleLogout} 
